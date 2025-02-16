@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="description" content="A physics-based basketball game with realistic ball mechanics and trajectory prediction">
+    <meta name="keywords" content="basketball, physics game, sports simulation">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Golf Physics</title>
+    <style>
+        body {
+            background-image: url('mountain-game-background_22191-30.jpg');
+            background-size: cover;
+            background-position: center;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            overflow-x: auto;
+            overflow-y: hidden;
+            height: 72vh;
+            position: 10vh;
+            display:flex;
+            align-items: center;
+            transition: background 0.5s ease-out;
+           
+            
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            min-width: 100vw;
+            width: max-content;
+            max-width: 5000m;
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            overflow-x: auto;
+            scroll-behavior: smooth;
+        }
+        
+        canvas:active {
+            cursor: grabbing;
+        }
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(255,255,255,0.9);
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 1;
+        }
+        .variables {
+            margin: 5px 0;
+        }
+        label {
+            display: block;
+            margin: 0.00005px 0;
+        }
+        .distance-display {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(255,255,255,0.9);
+            padding: 8px;
+            border-radius: 8px;
+            font-size: 12px
+        }
+        .final-distance {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255,255,255,0.95);
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            font-size: 24px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+            z-index: 2;
+            animation: popIn 0.5s ease-out;
+        }
+        .reset-btn {
+            margin-top: 15px;
+            padding: 10px 20px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .reset-btn:hover {
+            background: #45a049;
+        }
+        @keyframes popIn {
+            0% { transform: translate(-50%, -50%) scale(0); }
+            70% { transform: translate(-50%, -50%) scale(1.1); }
+            100% { transform: translate(-50%, -50%) scale(1); }
+        }
+
+        /* Add transitions for ball and hole */
+        ball {
+            transition: transform 0.3s ease-out;
+        }
+        hole {
+            transition: transform 0.3s ease-out;
+        }
+        .congrats-message {
+            display: none;
+            position: fixed;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255,255,255,0.95);
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            font-size: 24px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+            z-index: 2;
+            animation: popIn 0.5s ease-out;
+        }
+        .try-again-message {
+            display: none;
+            position: fixed;
+            top: 60%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255,255,255,0.95);
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            font-size: 24px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+            z-index: 2;
+            animation: popIn 0.5s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div class="controls">
+        <h3>Golf Physics</h3>
+        <div class="variables">
+            <label>Velocity (m/s):
+                <input type="range" id="velocitySlider" min="0" max="100" value="0" step="0.5">
+                <span id="velocityValue">0</span>
+            </label>
+            <label>Angle (degrees):
+                <input type="range" id="angleSlider" min="0" max="90" value="0">
+                <span id="angleValue">0</span>
+            </label>
+            <label>Distance from Hole (m):
+                <input type="range" id="distanceSlider" min="0" max="5000" value="0" step="50">
+                <span id="distanceValue">0</span>
+            </label>
+        </div>
+        <button onclick="hitBall()">Hit Ball</button>
+        <button onclick="resetBall()">Reset Ball</button>
+        <p>Score: <span id="score">0</span></p>
+    </div>
+
+    <div class="distance-display">
+        <p>Distance to Hole: <span id="currentDistance">0</span> m</p>
+    </div>
+
+    <div class="final-distance" id="finalDistance">
+        <h2 id="finalMessageTitle">Final Distance</h2>
+        <p><span id="finalDistanceValue">0</span> meters</p>
+        <button class="reset-btn" onclick="resetBall()">Reset Ball</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const baseWidth = window.innerWidth;
+        canvas.width = baseWidth;
+        canvas.height = window.innerHeight;
+
+        const getScale = () => canvas.width / 5800;
+        const minWidth = baseWidth * 100; 
+        const maxWidth = baseWidth * 5800;
+        
+        const groundLevel = canvas.height - 150;
+
+        let score = 0;
+        const g = 9.81;
+        let ball = {
+            x: canvas.width - 150 - (100 * getScale()),
+            y: canvas.height - 130,
+            radius: .8 * getScale() * 100,
+            vx: 0,
+            vy: 0,
+            isMoving: false,
+            isDragging: false,
+            hasLanded: false
+        };
+
+        const hole = {
+            x: canvas.width - 150,
+            y: canvas.height - 110,
+            radius: .9 * getScale() * 100,
+            flagHeight: 2.5 * getScale() * 100,
+            flagWidth: 0.7 * getScale() * 100
+        };
+
+        let isDragging = false;
+        let dragStartX = 0;
+        let initialCanvasWidth = canvas.width;
+        let initialDistance = 0;
+        let cameraZoom = 1;
+
+        function updateCameraZoom() {
+            const distance = Math.abs(calculateDistance());
+            if (distance < 100) {
+                cameraZoom = 2.5; // Close zoom when near hole
+            } else if (distance < 500) {
+                cameraZoom = 1.5; // Medium zoom
+            } else {
+                cameraZoom = 1; // Default zoom
+            }
+            
+            // Apply transition to ball and hole elements
+            const ballTransform = `scale(${cameraZoom})`;
+            const holeTransform = `scale(${cameraZoom})`;
+            
+            ctx.save();
+            ctx.translate(ball.x, ball.y);
+            ctx.scale(cameraZoom, cameraZoom);
+            ctx.translate(-ball.x, -ball.y);
+            drawBall();
+            ctx.restore();
+            
+            ctx.save();
+            ctx.translate(hole.x, hole.y);
+            ctx.scale(cameraZoom, cameraZoom);
+            ctx.translate(-hole.x, -hole.y);
+            drawHole();
+            ctx.restore();
+        }
+
+        function resetBall() {
+            ball.x = hole.x - (25 * getScale());
+            ball.y = canvas.height  - 132;
+            ball.vx = 0;
+            ball.vy = 0;
+            ball.isMoving = false;
+            ball.hasLanded = false;
+            document.getElementById('finalDistance').style.display = 'none';
+            document.getElementById('congratsMessage').style.display = 'none';
+            document.getElementById('tryAgainMessage').style.display = 'none';
+            initialDistance = calculateDistance();
+            updateCameraZoom();
+        }
+
+        function showFinalDistance(distance, message) {
+            const finalDistanceElement = document.getElementById('finalDistance');
+            const distanceChange = Math.min(initialDistance, distance);
+            document.getElementById('finalDistanceValue').textContent = distanceChange.toFixed(1);
+            document.getElementById('finalMessageTitle').textContent = message;
+            finalDistanceElement.style.display = 'block';
+        }
+
+        function showCongratsMessage() {
+            showFinalDistance(0, 'Congratulations! You hit the hole!');
+        }
+
+        function showTryAgainMessage(distance) {
+            showFinalDistance(distance, 'Try Again! You missed the hole!');
+        }
+
+        function hitBall() {
+            if (ball.isMoving || ball.isDragging || ball.hasLanded) return;
+            
+            const velocity = parseFloat(document.getElementById('velocitySlider').value);
+            const angle = parseFloat(document.getElementById('angleSlider').value);
+            const radians = angle * Math.PI / 180;
+            
+            ball.vx = velocity * Math.cos(radians) * getScale();
+            ball.vy = -velocity * Math.sin(radians) * getScale();
+            
+            ball.isMoving = true;
+            initialDistance = calculateDistance();
+            
+            function updateBallPosition() {
+                if (!ball.isMoving) return;
+                
+                ball.x += ball.vx;
+                ball.y += ball.vy;
+                
+                ball.vy += g * getScale() / 60;
+                
+                updateCameraZoom();
+                
+                if (ball.y > canvas.height - 115) {
+                    ball.y = canvas.height - 115;
+                    ball.vy = 0;
+                    ball.vx = 0;
+                    ball.isMoving = false;
+                    ball.hasLanded = true;
+                    
+                    const finalDistance = calculateDistance();
+                    if (Math.abs(finalDistance) < hole.radius) {
+                        showCongratsMessage();
+                    } else {
+                        showTryAgainMessage(finalDistance);
+                    }
+                }
+                
+                const dx = hole.x - ball.x;
+                const dy = hole.y - ball.y;
+                if (Math.sqrt(dx * dx + dy * dy) < hole.radius) {
+                    score++;
+                    document.getElementById('score').textContent = score;
+                    ball.isMoving = false;
+                    ball.hasLanded = true;
+                    showFinalDistance(0);
+                    showCongratsMessage();
+                }
+                
+                const currentDistance = calculateDistance();
+                const distanceChange = Math.min(initialDistance, currentDistance);
+                document.getElementById('currentDistance').textContent = 
+                    distanceChange.toFixed(1);
+                
+                if (ball.isMoving) {
+                    requestAnimationFrame(updateBallPosition);
+                }
+            }
+            
+            updateBallPosition();
+        }
+
+        function calculateTrajectoryPoints(startX, startY, velocity, angle) {
+            const points = [];
+            const radians = angle * Math.PI / 180;
+            const vx = velocity * Math.cos(radians) * getScale();
+            const vy = -velocity * Math.sin(radians) * getScale();
+            let x = startX;
+            let y = startY;
+            let t = 0;
+            
+            while (y <= canvas.height && x <= canvas.width && points.length < 100) {
+                points.push({x, y});
+                t += 1/60;
+                x = startX + vx * t;
+                y = startY + vy * t + (0.5 * g * getScale() * t * t);
+            }
+            
+            return points;
+        }
+
+        function drawTrajectory() {
+            if (!ball.isMoving && !ball.isDragging && !ball.hasLanded) {
+                const velocity = parseFloat(document.getElementById('velocitySlider').value);
+                const angle = parseFloat(document.getElementById('angleSlider').value);
+                const points = calculateTrajectoryPoints(ball.x, ball.y, velocity, angle);
+                
+                ctx.beginPath();
+                ctx.setLineDash([5, 5]);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.lineWidth = 4;
+                
+                points.forEach((point, index) => {
+                    if (index === 0) {
+                        ctx.moveTo(point.x, point.y);
+                    } else {
+                        ctx.lineTo(point.x, point.y);
+                    }
+                });
+                
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
+
+        function calculateDistance() {
+            if (Math.abs(canvas.height - ball.y - 50) < 1) {
+                const distance = (ball.radius - hole.radius) / getScale();
+                return distance; // Will be negative if ball is right of hole
+            }
+            const dx = hole.x - ball.x;
+            const dy = hole.y - ball.y;
+            return Math.sqrt(dx * dx + dy * dy) / getScale() * Math.sign(hole.x - ball.x);
+        }
+
+        function drawBall() {
+            const distanceFromHole = calculateDistance();
+            const objectScale = Math.max(0.45, 1 - (Math.abs(distanceFromHole) / 1000));
+            
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius * objectScale, 0, Math.PI * 2);
+            ctx.fillStyle = 'white';
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        function drawHole() {
+            const distanceFromHole = calculateDistance();
+            const objectScale = Math.max(0.45, 1 - (Math.abs(distanceFromHole) / 1000));
+            
+            ctx.beginPath();
+            ctx.arc(hole.x, hole.y, hole.radius * objectScale, 0, Math.PI * 1);
+            ctx.fillStyle = '#333';
+            ctx.fill();
+            ctx.closePath();
+            
+            ctx.beginPath();
+            ctx.moveTo(hole.x, hole.y);
+            ctx.lineTo(hole.x, hole.y - (hole.flagHeight * objectScale));
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 3 * objectScale;
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.moveTo(hole.x, hole.y - (hole.flagHeight * objectScale));
+            ctx.lineTo(hole.x + (hole.flagWidth * objectScale), 
+                      hole.y - (hole.flagHeight * objectScale) + (hole.flagWidth * objectScale/2));
+            ctx.lineTo(hole.x, hole.y - (hole.flagHeight * objectScale) + (hole.flagWidth * objectScale));
+            ctx.fillStyle = 'red';
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        
+    function drawScale() {
+        ctx.fillStyle = 'white';
+        ctx.font = '12px Arial';
+        for(let i = 0; i <= 5000; i += 200 ){
+            const x = hole.x - (i * getScale());
+            ctx.fillRect(x, canvas.height - 30, 2, 10); // Small line for indication
+            ctx.fillText(`${i}m`, x - 10, canvas.height - 5); // Lower the text
+
+
+            }
+        }
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            drawScale();
+            drawTrajectory();
+            drawHole();
+            drawBall();
+            
+            requestAnimationFrame(gameLoop);
+        }
+
+        document.getElementById('velocitySlider').addEventListener('input', function() {
+            document.getElementById('velocityValue').textContent = this.value;
+        });
+        document.getElementById('angleSlider').addEventListener('input', function() {
+            document.getElementById('angleValue').textContent = this.value;
+        });
+        document.getElementById('distanceSlider').addEventListener('input', function() {
+            const distance = parseInt(this.value);
+            document.getElementById('distanceValue').textContent = distance;
+            if (!ball.isMoving && !ball.hasLanded) {
+                ball.x = hole.x - (distance * getScale());
+                ball.y = canvas.height - 120;
+                initialDistance = distance;
+                document.getElementById('currentDistance').textContent = '0.0';
+                updateCameraZoom();
+            }
+        });
+
+        gameLoop();
+
+        window.addEventListener('resize', () =>{
+            const currentWidth = canvas.width;
+            canvas.width = Math.max(window.innerWidth, currentWidth);
+            canvas.height = window.innerHeight;
+            hole.x = canvas.width - 150;
+            
+            ball.radius = .7 * getScale() * 100;
+            hole.radius = 0.9 * getScale() * 100;
+            hole.flagHeight = 2.5 * getScale() * 100;
+            hole.flagWidth = 0.9 * getScale() * 100;
+
+            if (!ball.isMoving && !ball.isDragging && !ball.hasLanded) {
+                ball.x = hole.x - (100*getScale());
+                ball.y = canvas.height - 115;
+                initialDistance = calculateDistance();
+                updateCameraZoom();
+            }
+        });
+    </script>
+</body>
+</html>
